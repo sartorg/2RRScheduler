@@ -14,3 +14,9 @@ class Instance():
         self.teams = []
         self.slots = []
         self.constraints = []
+
+def read_instance(file_name):
+    tree = et.parse(file_name)
+    root = tree.getroot()
+    for child in root:
+        print(child.tag, child.attrib)
