@@ -1,8 +1,11 @@
 # The file handles the problem instances.
 
-import xml.etree.ElementTree as et 
+import xml.etree.ElementTree as et
+from xml.dom import minidom
 
 class TwoRRProblem():
+    # Represents a double round robin problem.
+    # The structure is based on the RobinX format.
     def __init__(self, name, data_type, contributor, year):
         self.name = name
         self.data_type = data_type
@@ -30,6 +33,7 @@ class TwoRRProblem():
         return my_str
 
 def read_instance(file_name):
+    # Reads an instance from the RobinX XML format
     tree = et.parse(file_name)
     root = tree.getroot()
     prob = TwoRRProblem(root[0][0].text, root[0][1].text, root[0][2].text, root[0][3].attrib["year"])
@@ -44,4 +48,30 @@ def read_instance(file_name):
             prob.constraints.append((constraint.tag, constraint.attrib))
 
     return prob
+
+def write_solution(file_name, prob, m_vars, objective):
+    # Write a solution file in XML format
+    solution = et.Element("Solution")
+    meta_data = et.SubElement(solution, "MetaData")
+    instance_name = et.SubElement(meta_data, "InstanceName")
+    instance_name.text = prob.name
+    solution_name = et.SubElement(meta_data, "SolutionName")
+    solution_name.text = file_name
+    objective_value = et.SubElement(meta_data, "ObjectiveValue")
+    objective_value.attrib["infeasibility"] = "0"
+    objective_value.attrib["objective"] = str(int(objective))
+    games = et.SubElement(solution, "Games")
+    for slot in range(len(prob.slots)):
+        for h_team in range(len(prob.teams)):
+            for a_team in range(len(prob.teams)):
+                if h_team == a_team:
+                    continue
+                if m_vars[h_team, a_team, slot].x > 0.5:
+                    game = et.SubElement(games, "ScheduledMatch")
+                    game.attrib["home"] = str(h_team)
+                    game.attrib["away"] = str(a_team)
+                    game.attrib["slot"] = str(slot)
+
+    with open(file_name, "w") as myxml:
+        myxml.write(minidom.parseString(et.tostring(solution)).toprettyxml())
         
