@@ -424,10 +424,55 @@ def solve_naive(prob: TwoRRProblem):
                                     for slot in slots if slot != 0]) - slack <= intp)
         # Fairness constraints
         if c_name == "FA2":
+            teams = [int(t) for t in constraint["teams"].split(';')]
+            slots = sorted([int(s) for s in constraint["slots"].split(';')])
+            intp = int(constraint["intp"])
+            penalty = int(constraint["penalty"])
             if constraint["type"] == "HARD":
-                pass
+                for team1 in teams:
+                    for team2 in teams:
+                        if team1 == team2:
+                            continue
+                        for slot in slots:
+                            model.addConstr(gp.quicksum([m_vars[team1,i,j] 
+                                                            for i in range(n_teams) if i != team1
+                                                            for j in range(slot + 1)]) - \
+                                            gp.quicksum([m_vars[team2,i,j] 
+                                                            for i in range(n_teams) if i != team2
+                                                            for j in range(slot + 1)]) <= intp)
+                            model.addConstr(gp.quicksum([m_vars[team2,i,j] 
+                                                            for i in range(n_teams) if i != team1
+                                                            for j in range(slot + 1)]) - \
+                                            gp.quicksum([m_vars[team1,i,j] 
+                                                            for i in range(n_teams) if i != team2
+                                                            for j in range(slot + 1)]) <= intp)
             else:
-                pass
+                diff_vars = dict()
+                for team1 in teams:
+                    for team2 in teams:
+                        if team1 == team2:
+                            continue
+                        for slot in slots:
+                            diff_var =  model.addVar(vtype=GRB.INTEGER, name="diff_" + str(team1) + "_" + str(team2) + "_" + str(slot))
+                            diff_vars[team1, team2, slot] = diff_var
+                            model.addConstr(gp.quicksum([m_vars[team1,i,j] 
+                                                            for i in range(n_teams) if i != team1
+                                                            for j in range(slot + 1)]) - \
+                                            gp.quicksum([m_vars[team2,i,j] 
+                                                            for i in range(n_teams) if i != team2
+                                                            for j in range(slot + 1)]) <= diff_var)
+                            model.addConstr(gp.quicksum([m_vars[team2,i,j] 
+                                                            for i in range(n_teams) if i != team2
+                                                            for j in range(slot + 1)]) - \
+                                            gp.quicksum([m_vars[team1,i,j] 
+                                                            for i in range(n_teams) if i != team1
+                                                            for j in range(slot + 1)]) <= diff_var)
+                        largest_diff_var =  model.addVar(vtype=GRB.INTEGER, name="ldiff_" + str(team1) + "_" + str(team2))
+                        slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                        for slot in slots:
+                            model.addConstr(diff_vars[team1, team2, slot] <= largest_diff_var)
+                        model.addConstr(largest_diff_var - slack <= intp)
+                            
         # Separation constraints
         if c_name == "SE1":
             if constraint["type"] == "HARD":
