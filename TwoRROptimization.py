@@ -9,7 +9,7 @@ import gurobipy as gp
 from gurobipy import GRB
 from TwoRRProblem import TwoRRProblem, write_solution
 
-def solve_naive(prob: TwoRRProblem):
+def solve_naive(prob: TwoRRProblem, skipSoft=False):
     # Set up and solve with Gurobi a "naive" model 
     # for the TwoRRProblem. The model is naive in
     # the sense that il follows the standard integer
@@ -86,7 +86,28 @@ def solve_naive(prob: TwoRRProblem):
                 model.addConstr(gp.quicksum([m_vars[team1,team2,slot] + m_vars[team2,team1,slot] 
                                     for slot in range(int(n_slots/2), n_slots)]) == 1)
     
+    # Additional vars that determines weather a team plays home or away in a certain slot.
+    ta_vars = dict()
+    th_vars = dict()
     
+    def get_team_var(team, slot, away=False):
+        if away:
+            if (team, slot) not in ta_vars:
+                ta_var = model.addVar(vtype=GRB.BINARY, name="ta_" + str(team) + "_" + str(slot))
+                ta_vars[team, slot] = ta_var
+                model.addConstr(gp.quicksum([m_vars[i,team,slot] 
+                                    for i in range(n_teams) if i != team]) <= ta_var)
+            return ta_vars[team, slot]
+        else:
+            if (team, slot) not in th_vars:
+                th_var = model.addVar(vtype=GRB.BINARY, name="th_" + str(team) + "_" + str(slot))
+                th_vars[team, slot] = th_var
+                model.addConstr(gp.quicksum([m_vars[team,i,slot] 
+                                    for i in range(n_teams) if i != team]) <= th_var)
+            return th_vars[team, slot]
+    
+    # Additional vars that determine whether a team has an away break or a home break
+    # in a certain slot.
     bh_vars = dict() # Home breaks
     ba_vars = dict() # Away breaks
 
@@ -126,7 +147,7 @@ def solve_naive(prob: TwoRRProblem):
         print("Adding problem specific constraints...")
 
     # Add problem specific constraints
-    for (c_name, constraint) in prob.constraints:
+    for (ind, (c_name, constraint)) in enumerate(prob.constraints):
         # Capacity constraints:
         if c_name == "CA1":
             slots = [int(s) for s in constraint["slots"].split(';')]
@@ -140,24 +161,28 @@ def solve_naive(prob: TwoRRProblem):
                 if constraint["type"] == "HARD":
                     if constraint["mode"] == "A":
                         model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                        for i in range(n_teams) if i != team 
-                                        for j in slots]) <= c_max)
+                                            for i in range(n_teams) if i != team 
+                                            for j in slots]) <= c_max,
+                                        name="CA1_" + str(team) + "_" + str(ind))
                     elif constraint["mode"] == "H":
                         model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                        for i in range(n_teams) if i != team 
-                                        for j in slots]) <= c_max)
+                                            for i in range(n_teams) if i != team 
+                                            for j in slots]) <= c_max,
+                                        name="CA1_" + str(team) + "_" + str(ind))
                     else:
                         raise Exception("Mode HA for CA1 not implemented!")
-                else:
-                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                elif not skipSoft:
+                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA1_" + str(ind))
                     if constraint["mode"] == "A":
                         model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                        for i in range(n_teams) if i != team  
-                                        for j in slots]) - slack <= c_max)
+                                            for i in range(n_teams) if i != team  
+                                            for j in slots]) - slack <= c_max,
+                                        name="CA1_" + str(team) + "_" + str(ind))
                     elif constraint["mode"] == "H": 
                         model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                        for i in range(n_teams) if i != team 
-                                        for j in slots]) - slack <= c_max)
+                                            for i in range(n_teams) if i != team 
+                                            for j in slots]) - slack <= c_max,
+                                        name="CA1_" + str(team) + "_" + str(ind))
                     else:
                         raise Exception("Mode HA for CA1 not implemented!")
         if c_name == "CA2":
@@ -173,36 +198,42 @@ def solve_naive(prob: TwoRRProblem):
                 if constraint["type"] == "HARD":
                     if constraint["mode1"] == "A":
                         model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) <= c_max)
+                                            for i in teams2 if i != team
+                                            for j in slots]) <= c_max,
+                                        name="CA2_" + str(team) + "_" + str(ind))
                     elif constraint["mode1"] == "H":
                         model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) <= c_max)
+                                            for i in teams2 if i != team
+                                            for j in slots]) <= c_max,
+                                        name="CA2_" + str(team) + "_" + str(ind))
                     else:
                         model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) + 
+                                            for i in teams2 if i != team
+                                            for j in slots]) + 
                                         gp.quicksum([m_vars[i, team, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) <= c_max)
-                else:
-                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                                            for i in teams2 if i != team
+                                            for j in slots]) <= c_max,
+                                        name="CA2_" + str(team) + "_" + str(ind))
+                elif not skipSoft:
+                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA2_" + str(ind))
                     if constraint["mode1"] == "A":
                         model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) - slack <= c_max)
+                                            for i in teams2 if i != team
+                                            for j in slots]) - slack <= c_max,
+                                        name="CA2_" + str(team) + "_" + str(ind))
                     elif constraint["mode1"] == "H":
                         model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) - slack <= c_max)
+                                            for i in teams2 if i != team
+                                            for j in slots]) - slack <= c_max,
+                                        name="CA2_" + str(team) + "_" + str(ind))
                     else:
                         model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) + 
+                                            for i in teams2 if i != team
+                                            for j in slots]) + 
                                         gp.quicksum([m_vars[i, team, j] 
-                                        for i in teams2 if i != team
-                                        for j in slots]) - slack <= c_max)
+                                            for i in teams2 if i != team
+                                            for j in slots]) - slack <= c_max,
+                                        name="CA2_" + str(team) + "_" + str(ind))
         if c_name == "CA3":
             teams1 = [int(t) for t in constraint["teams1"].split(';')]
             teams2 = [int(t) for t in constraint["teams2"].split(';')]
@@ -217,41 +248,49 @@ def solve_naive(prob: TwoRRProblem):
                     if constraint["mode1"] == "A":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
                             model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                            for i in teams2 if i != team
-                                            for j in slots]) <= c_max)
+                                                for i in teams2 if i != team
+                                                for j in slots]) <= c_max,
+                                            name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
                     elif constraint["mode1"] == "H":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
                             model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                            for i in teams2 if i != team
-                                            for j in slots]) <= c_max)
+                                                for i in teams2 if i != team
+                                                for j in slots]) <= c_max,
+                                            name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
                     else:
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
                             model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                            for i in teams2 if i != team
-                                            for j in slots]) + 
+                                                for i in teams2 if i != team
+                                                for j in slots]) + 
                                             gp.quicksum([m_vars[i, team, j] 
-                                            for i in teams2 if i != team
-                                            for j in slots]) <= c_max)
-                else:
-                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                                                for i in teams2 if i != team
+                                                for j in slots]) <= c_max,
+                                            name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                elif not skipSoft:
                     if constraint["mode1"] == "A":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
+                            slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                             model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                            for i in teams2 
-                                            for j in slots]) - slack <= c_max)
+                                                for i in teams2 if i != team
+                                                for j in slots]) - slack <= c_max,
+                                            name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
                     elif constraint["mode1"] == "H":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
+                            slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                             model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                            for i in teams2
-                                            for j in slots]) - slack <= c_max)
+                                                for i in teams2 if i != team
+                                                for j in slots]) - slack <= c_max,
+                                            name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
                     else:
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
+                            slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                             model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                            for i in teams2
-                                            for j in slots]) + 
+                                                for i in teams2 if i != team
+                                                for j in slots]) + 
                                             gp.quicksum([m_vars[i, team, j] 
-                                            for i in teams2 
-                                            for j in slots]) - slack <= c_max)
+                                                for i in teams2 if i != team
+                                                for j in slots]) - slack <= c_max,
+                                            name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
         if c_name == "CA4":
             slots = [int(s) for s in constraint["slots"].split(';')]
             teams1 = [int(t) for t in constraint["teams1"].split(';')]
@@ -265,90 +304,102 @@ def solve_naive(prob: TwoRRProblem):
                 if constraint["mode1"] == "A":
                     if constraint["mode2"] == "GLOBAL":
                         model.addConstr(gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams2
-                                        for j in teams1 if i != j
-                                        for z in slots]) <= c_max)
+                                            for i in teams2
+                                            for j in teams1 if i != j
+                                            for z in slots]) <= c_max,
+                                        name="CA4_" + str(ind))
                     else:
                         for slot in slots:
                             model.addConstr(gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams2
-                                        for j in teams1 if i != j]) <= c_max)
+                                                for i in teams2
+                                                for j in teams1 if i != j]) <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
                 elif constraint["mode1"] == "H":
                     if constraint["mode2"] == "GLOBAL":
                         model.addConstr(gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams1
-                                        for j in teams2 if i != j
-                                        for z in slots]) <= c_max)
+                                            for i in teams1
+                                            for j in teams2 if i != j
+                                            for z in slots]) <= c_max,
+                                        name="CA4_" + str(ind))
                     else:
                         for slot in slots:
                             model.addConstr(gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams1
-                                        for j in teams2 if i != j]) <= c_max)
+                                                for i in teams1
+                                                for j in teams2 if i != j]) <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
                 else:
                     if constraint["mode2"] == "GLOBAL":
                         model.addConstr(gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams1
-                                        for j in teams2 if i != j
-                                        for z in slots]) + 
+                                            for i in teams1
+                                            for j in teams2 if i != j
+                                            for z in slots]) + 
                                         gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams2
-                                        for j in teams1 if i != j
-                                        for z in slots]) <= c_max)
+                                            for i in teams2
+                                            for j in teams1 if i != j
+                                            for z in slots]) <= c_max,
+                                        name="CA4_" + str(ind))
                     else:
                         for slot in slots:
                             model.addConstr(gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams1
-                                        for j in teams2 if i != j])  + 
-                                        gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams2
-                                        for j in teams1 if i != j]) <= c_max)
-            else:
+                                                for i in teams1
+                                                for j in teams2 if i != j])  + 
+                                            gp.quicksum([m_vars[i, j, slot] 
+                                                for i in teams2
+                                                for j in teams1 if i != j]) <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
+            elif not skipSoft:
                 if constraint["mode1"] == "A":
                     if constraint["mode2"] == "GLOBAL":
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                         model.addConstr(gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams2
-                                        for j in teams1 if i != j
-                                        for z in slots]) - slack <= c_max)
+                                            for i in teams2
+                                            for j in teams1 if i != j
+                                            for z in slots]) - slack <= c_max,
+                                        name="CA4_" + str(ind))
                     else:
                         for slot in slots:
-                            slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                            slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA4_" + str(slot) + "_" + str(ind))
                             model.addConstr(gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams2
-                                        for j in teams1 if i != j]) - slack <= c_max)
+                                                for i in teams2
+                                                for j in teams1 if i != j]) - slack <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
                 elif constraint["mode1"] == "H":
                     if constraint["mode2"] == "GLOBAL":
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                         model.addConstr(gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams1
-                                        for j in teams2 if i != j
-                                        for z in slots]) - slack<= c_max)
+                                            for i in teams1
+                                            for j in teams2 if i != j
+                                            for z in slots]) - slack<= c_max,
+                                        name="CA4_" + str(ind))
                     else:
                         for slot in slots:
-                            slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                            slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA4_" + str(slot) + "_" + str(ind))
                             model.addConstr(gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams1
-                                        for j in teams2 if i != j]) - slack <= c_max)
-                else:
+                                                for i in teams1
+                                                for j in teams2 if i != j]) - slack <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
+                else:  
                     if constraint["mode2"] == "GLOBAL":
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                         model.addConstr(gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams1
-                                        for j in teams2 if i != j
-                                        for z in slots]) + 
-                                        gp.quicksum([m_vars[i, j, z] 
-                                        for i in teams2
-                                        for j in teams1 if i != j
-                                        for z in slots]) - slack <= c_max)
+                                            for i in teams1
+                                            for j in teams2 if i != j
+                                            for z in slots]) + 
+                                            gp.quicksum([m_vars[i, j, z] 
+                                            for i in teams2
+                                            for j in teams1 if i != j
+                                            for z in slots]) - slack <= c_max,
+                                        name="CA4_" + str(ind))
                     else:
                         for slot in slots:
                             slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                             model.addConstr(gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams1
-                                        for j in teams2 if i != j])  + 
-                                        gp.quicksum([m_vars[i, j, slot] 
-                                        for i in teams2
-                                        for j in teams1 if i != j]) - slack <= c_max)
+                                                for i in teams1
+                                                for j in teams2 if i != j])  + 
+                                                gp.quicksum([m_vars[i, j, slot] 
+                                                for i in teams2
+                                                for j in teams1 if i != j]) - slack <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
         # Game constraints
         if c_name == "GA1":
             slots = [int(s) for s in constraint["slots"].split(';')]
@@ -359,19 +410,23 @@ def solve_naive(prob: TwoRRProblem):
             if constraint["type"] == "HARD":
                 model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
-                                    for slot in slots]) <= c_max)
+                                    for slot in slots]) <= c_max,
+                                name="GA1_max_" + str(slot) + "_" + str(ind))
                 model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
-                                    for slot in slots]) >= c_min)
-            else:
+                                    for slot in slots]) >= c_min,
+                                name="GA1_min_" + str(slot) + "_" + str(ind))
+            elif not skipSoft:
                 slack_plus = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                 model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
-                                    for slot in slots]) - slack_plus <= c_max)
+                                    for slot in slots]) - slack_plus <= c_max,
+                                name="GA1_max_" + str(slot) + "_" + str(ind))
                 slack_minus = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                 model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
-                                    for slot in slots]) + slack_minus >= c_min)
+                                    for slot in slots]) + slack_minus >= c_min,
+                                name="GA1_min_" + str(slot) + "_" + str(ind))
         # Break constraints
         if c_name == "BR1":
             teams = [int(t) for t in constraint["teams"].split(';')]
@@ -383,31 +438,37 @@ def solve_naive(prob: TwoRRProblem):
                 if mode == "A":
                     for team in teams:
                         model.addConstr(gp.quicksum([get_break_var(team, slot, away=True) 
-                                            for slot in slots if slot != 0]) <= intp)
+                                            for slot in slots if slot != 0]) <= intp,
+                                        name="BR1_" + str(team) + "_" + str(ind))
                 elif mode == "H":
                     for team in teams:
                         model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) 
-                                            for slot in slots if slot != 0]) <= intp)
+                                            for slot in slots if slot != 0]) <= intp,
+                                        name="BR1_" + str(team) + "_" + str(ind))
                 else:
                     for team in teams:
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False)  + get_break_var(team, slot, away=True)
-                                            for slot in slots if slot != 0]) <= intp)
-            else:
+                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
+                                            for slot in slots if slot != 0]) <= intp,
+                                        name="BR1_" + str(team) + "_" + str(ind))
+            elif not skipSoft:
                 if mode == "A":
                     for team in teams:
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                         model.addConstr(gp.quicksum([get_break_var(team, slot, away=True) 
-                                            for slot in slots if slot != 0]) - slack <= intp)
+                                            for slot in slots if slot != 0]) - slack <= intp,
+                                        name="BR1_" + str(team) + "_" + str(ind))
                 elif mode == "H":
                     for team in teams:
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                         model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) 
-                                            for slot in slots if slot != 0]) - slack <= intp)
+                                            for slot in slots if slot != 0]) - slack <= intp,
+                                        name="BR1_" + str(team) + "_" + str(ind))
                 else:
                     for team in teams:
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False)  + get_break_var(team, slot, away=True)
-                                            for slot in slots if slot != 0]) - slack <= intp)
+                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
+                                            for slot in slots if slot != 0]) - slack <= intp,
+                                        name="BR1_" + str(team) + "_" + str(ind))
         if c_name == "BR2":
             teams = [int(t) for t in constraint["teams"].split(';')]
             slots = [int(s) for s in constraint["slots"].split(';')]
@@ -416,12 +477,14 @@ def solve_naive(prob: TwoRRProblem):
             if constraint["type"] == "HARD":
                 model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
                                     for team in teams
-                                    for slot in slots if slot != 0]) <= intp)
-            else:
+                                    for slot in slots if slot != 0]) <= intp,
+                                name="BR2_" + str(ind))
+            elif not skipSoft:
                 slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                 model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
                                     for team in teams
-                                    for slot in slots if slot != 0]) - slack <= intp)
+                                    for slot in slots if slot != 0]) - slack <= intp,
+                                name="BR2_" + str(ind))
         # Fairness constraints
         if c_name == "FA2":
             teams = [int(t) for t in constraint["teams"].split(';')]
@@ -439,14 +502,16 @@ def solve_naive(prob: TwoRRProblem):
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team2
-                                                            for j in range(slot + 1)]) <= intp)
+                                                            for j in range(slot + 1)]) <= intp,
+                                            name="FA2_1_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
                             model.addConstr(gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team1
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team2
-                                                            for j in range(slot + 1)]) <= intp)
-            else:
+                                                            for j in range(slot + 1)]) <= intp,
+                                            name="FA2_2_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
+            elif not skipSoft:
                 for team1 in teams:
                     for team2 in teams:
                         if team1 == team2:
@@ -461,15 +526,16 @@ def solve_naive(prob: TwoRRProblem):
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team2
-                                                            for j in range(slot + 1)]) <= diff_var)
+                                                            for j in range(slot + 1)]) <= diff_var,
+                                            name="FA2_1_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
                             model.addConstr(gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team2
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team1
-                                                            for j in range(slot + 1)]) <= diff_var)
-                            model.addConstr(diff_var <= largest_diff_var)
-                       
+                                                            for j in range(slot + 1)]) <= diff_var,
+                                            name="FA2_2_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
+                            model.addConstr(diff_var <= largest_diff_var, name="FA2_3_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
                             
         # Separation constraints
         if c_name == "SE1":
@@ -478,23 +544,25 @@ def solve_naive(prob: TwoRRProblem):
             c_min = int(constraint["min"])
             if constraint["type"] == "HARD": 
                 raise Exception("The HARD version of constraint SE1 is not implemented!")
-            else:
+            elif not skipSoft:
                 for i in range(len(teams)):
                     for j in range(i + 1, len(teams)):
-                        sep_var =  model.addVar(lb=0, vtype=GRB.INTEGER, name="sep_" + str(teams[i]) + "_" + str(teams[j]))
+                        sepc_var =  model.addVar(vtype=GRB.INTEGER, name="sep_" + str(teams[i]) + "_" + str(teams[j]))
                         min1_var =  model.addVar(vtype=GRB.BINARY, name="min1_" + str(teams[i]) + "_" + str(teams[j]))
                         min2_var =  model.addVar(vtype=GRB.BINARY, name="min2_" + str(teams[i]) + "_" + str(teams[j]))
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(sep_var - slack <= - c_min - 1)
+                        model.addConstr(sepc_var - slack <= - c_min - 1 + n_slots)
                         model.addConstr(gp.quicksum([slot * m_vars[teams[i],teams[j],slot] 
                                                         for slot in range(n_slots)]) - \
                                         gp.quicksum([slot * m_vars[teams[j],teams[i],slot] 
-                                                        for slot in range(n_slots)]) <= sep_var + min1_var * n_slots) 
+                                                        for slot in range(n_slots)]) + n_slots <= sepc_var + min1_var * 2 * n_slots,
+                                        name="SE1_1_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind)) 
                         model.addConstr(gp.quicksum([slot * m_vars[teams[j],teams[i],slot] 
                                                         for slot in range(n_slots)]) - \
                                         gp.quicksum([slot * m_vars[teams[i],teams[j],slot] 
-                                                        for slot in range(n_slots)]) <= sep_var + min2_var * n_slots)
-                        model.addConstr(min1_var + min2_var == 1)
+                                                        for slot in range(n_slots)]) + n_slots <= sepc_var + min2_var * 2 * n_slots,
+                                        name="SE1_2_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind))
+                        model.addConstr(min1_var + min2_var == 1, name="SE1_3_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind))
     
     if debug:
         model.update()
@@ -502,12 +570,36 @@ def solve_naive(prob: TwoRRProblem):
         print("Num constraints: " + str(model.NumConstrs))
 
     if debug:
+        print("Writing problem to file...")
         model.write("problem.lp")
 
     #model.setParam("OutputFlag", 0)
 
+    # Setting up callback function to retrieve feasible solutions
+    def callbackGetIncumbent(model, where):
+        if where == GRB.Callback.MIPSOL:
+            solcnt = model.cbGet(GRB.Callback.MIPSOL_SOLCNT)
+            obj = model.cbGet(GRB.Callback.MIPSOL_OBJ)
+            x = model.cbGetSolution(m_vars)
+            write_solution("solution_{}.xml".format(solcnt), prob, x, obj)
+
+    # Solution pool
+    model.setParam("PoolSolutions", 100)
+    model.setParam("PoolSearchMode", 2)
+
+    # Tuning parameters
+    model.setParam("Presolve", 2)
+    model.setParam("Symmetry", 2)
+
+    model.setParam("MIPFocus", 1)
+    model.setParam("Heuristics", 0.5)
+    model.setParam("Cuts", 3)
+
     if debug:
         print("Solving...")
+
+    # Optimize    
+    #model.optimize(callbackGetIncumbent)
     model.optimize()
 
     write_status(model)
@@ -544,4 +636,3 @@ def print_solution(m_vars, n_teams, n_slots):
                 if (m_vars[team1, team2, slot].x > 0.5):
                     print("({},{})".format(str(team1), str(team2)), end=' ')
         print("")
-        

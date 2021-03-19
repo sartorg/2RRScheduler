@@ -2,6 +2,9 @@
 
 import xml.etree.ElementTree as et
 from xml.dom import minidom
+import gurobipy as gp
+
+# pylint: disable=no-name-in-module, no-member
 
 class TwoRRProblem():
     # Represents a double round robin problem.
@@ -66,7 +69,10 @@ def write_solution(file_name, prob, m_vars, objective):
             for a_team in range(len(prob.teams)):
                 if h_team == a_team:
                     continue
-                if m_vars[h_team, a_team, slot].x > 0.5:
+                var_value = m_vars[h_team, a_team, slot]
+                if isinstance(var_value, gp.Var):
+                    var_value = var_value.x
+                if var_value > 0.5:
                     game = et.SubElement(games, "ScheduledMatch")
                     game.attrib["home"] = str(h_team)
                     game.attrib["away"] = str(a_team)
