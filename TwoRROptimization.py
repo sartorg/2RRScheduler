@@ -352,7 +352,7 @@ def solve_naive(prob: TwoRRProblem):
         # Game constraints
         if c_name == "GA1":
             slots = [int(s) for s in constraint["slots"].split(';')]
-            games = [(int(t[0]), int(t[2])) for t in constraint["meetings"].split(';') if len(t) > 0]
+            games = [(int(t.split(',')[0]),int(t.split(',')[1])) for t in constraint["meetings"].split(';') if len(t) > 0]
             c_min = int(constraint["min"])
             c_max = int(constraint["max"])
             penalty = int(constraint["penalty"])
@@ -447,14 +447,15 @@ def solve_naive(prob: TwoRRProblem):
                                                             for i in range(n_teams) if i != team2
                                                             for j in range(slot + 1)]) <= intp)
             else:
-                diff_vars = dict()
                 for team1 in teams:
                     for team2 in teams:
                         if team1 == team2:
                             continue
+                        largest_diff_var =  model.addVar(vtype=GRB.INTEGER, name="ldiff_" + str(team1) + "_" + str(team2))
+                        slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                        model.addConstr(largest_diff_var - slack <= intp)
                         for slot in slots:
                             diff_var =  model.addVar(vtype=GRB.INTEGER, name="diff_" + str(team1) + "_" + str(team2) + "_" + str(slot))
-                            diff_vars[team1, team2, slot] = diff_var
                             model.addConstr(gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team1
                                                             for j in range(slot + 1)]) - \
@@ -467,26 +468,38 @@ def solve_naive(prob: TwoRRProblem):
                                             gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team1
                                                             for j in range(slot + 1)]) <= diff_var)
-                        largest_diff_var =  model.addVar(vtype=GRB.INTEGER, name="ldiff_" + str(team1) + "_" + str(team2))
-                        slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        for slot in slots:
-                            model.addConstr(diff_vars[team1, team2, slot] <= largest_diff_var)
-                        model.addConstr(largest_diff_var - slack <= intp)
+                            model.addConstr(diff_var <= largest_diff_var)
+                       
                             
         # Separation constraints
         if c_name == "SE1":
-            if constraint["type"] == "HARD":
-                pass
+            teams = [int(t) for t in constraint["teams"].split(';')]
+            penalty = int(constraint["penalty"])
+            c_min = int(constraint["min"])
+            if constraint["type"] == "HARD": 
+                raise Exception("The HARD version of constraint SE1 is not implemented!")
             else:
-                pass
+                for i in range(len(teams)):
+                    for j in range(i + 1, len(teams)):
+                        sep_var =  model.addVar(lb=0, vtype=GRB.INTEGER, name="sep_" + str(teams[i]) + "_" + str(teams[j]))
+                        min1_var =  model.addVar(vtype=GRB.BINARY, name="min1_" + str(teams[i]) + "_" + str(teams[j]))
+                        min2_var =  model.addVar(vtype=GRB.BINARY, name="min2_" + str(teams[i]) + "_" + str(teams[j]))
+                        slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
+                        model.addConstr(sep_var - slack <= - c_min - 1)
+                        model.addConstr(gp.quicksum([slot * m_vars[teams[i],teams[j],slot] 
+                                                        for slot in range(n_slots)]) - \
+                                        gp.quicksum([slot * m_vars[teams[j],teams[i],slot] 
+                                                        for slot in range(n_slots)]) <= sep_var + min1_var * n_slots) 
+                        model.addConstr(gp.quicksum([slot * m_vars[teams[j],teams[i],slot] 
+                                                        for slot in range(n_slots)]) - \
+                                        gp.quicksum([slot * m_vars[teams[i],teams[j],slot] 
+                                                        for slot in range(n_slots)]) <= sep_var + min2_var * n_slots)
+                        model.addConstr(min1_var + min2_var == 1)
     
     if debug:
         model.update()
         print("Num vars: " + str(model.NumVars))
         print("Num constraints: " + str(model.NumConstrs))
-
-    if debug:
-        print("Setting the objective...")
 
     if debug:
         model.write("problem.lp")
