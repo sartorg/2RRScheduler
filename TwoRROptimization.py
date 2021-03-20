@@ -89,9 +89,9 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
     # Additional vars that determines weather a team plays home or away in a certain slot.
     ta_vars = dict()
     th_vars = dict()
-    
     def get_team_var(team, slot, away=False):
         if away:
+            # Team "team" plays away in slot "slot"
             if (team, slot) not in ta_vars:
                 ta_var = model.addVar(vtype=GRB.BINARY, name="ta_" + str(team) + "_" + str(slot))
                 ta_vars[team, slot] = ta_var
@@ -99,6 +99,7 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
                                     for i in range(n_teams) if i != team]) <= ta_var)
             return ta_vars[team, slot]
         else:
+            # Team "team" plays home in slot "slot"
             if (team, slot) not in th_vars:
                 th_var = model.addVar(vtype=GRB.BINARY, name="th_" + str(team) + "_" + str(slot))
                 th_vars[team, slot] = th_var
@@ -110,7 +111,6 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
     # in a certain slot.
     bh_vars = dict() # Home breaks
     ba_vars = dict() # Away breaks
-
     def get_break_var(team, slot, away=False):
         if away:
             if (team, slot) not in ba_vars:
@@ -128,20 +128,6 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
                                     for i in range(n_teams) if i != team
                                     for j in [slot - 1, slot]]) - 1 <= bh_var)
             return bh_vars[team, slot]
-
-
-    for team in range(n_teams):
-        for slot in range(1, n_slots):
-            bh_var = model.addVar(vtype=GRB.BINARY, name="bh_" + str(team) + "_" + str(slot))
-            bh_vars[team, slot] = bh_var
-            model.addConstr(gp.quicksum([m_vars[team,i,j] 
-                                for i in range(n_teams) if i != team
-                                for j in [slot - 1, slot]]) - 1 <= bh_var)
-            ba_var = model.addVar(vtype=GRB.BINARY, name="ba_" + str(team) + "_" + str(slot))
-            ba_vars[team, slot] = ba_var
-            model.addConstr(gp.quicksum([m_vars[i,team,j] 
-                                for i in range(n_teams) if i != team
-                                for j in [slot - 1, slot]]) - 1 <= ba_var)
 
     if debug:
         print("Adding problem specific constraints...")
@@ -584,16 +570,16 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
             write_solution("solution_{}.xml".format(solcnt), prob, x, obj)
 
     # Solution pool
-    model.setParam("PoolSolutions", 100)
-    model.setParam("PoolSearchMode", 2)
+    #model.setParam("PoolSolutions", 100)
+    #model.setParam("PoolSearchMode", 2)
+    #model.setParam("MIPFocus", 1)
+    #model.setParam("Heuristics", 0.5)
 
     # Tuning parameters
     model.setParam("Presolve", 2)
     model.setParam("Symmetry", 2)
-
-    model.setParam("MIPFocus", 1)
-    model.setParam("Heuristics", 0.5)
-    model.setParam("Cuts", 3)
+    model.setParam("GomoryPasses", 1)
+    model.setParam("PrePasses", 2)
 
     if debug:
         print("Solving...")
