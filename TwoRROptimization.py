@@ -146,28 +146,24 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
             for team in teams:
                 if constraint["type"] == "HARD":
                     if constraint["mode"] == "A":
-                        model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                            for i in range(n_teams) if i != team 
-                                            for j in slots]) <= c_max,
+                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=True) 
+                                            for slot in slots]) <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
                     elif constraint["mode"] == "H":
-                        model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                            for i in range(n_teams) if i != team 
-                                            for j in slots]) <= c_max,
+                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=False) 
+                                            for slot in slots]) <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
                     else:
                         raise Exception("Mode HA for CA1 not implemented!")
                 elif not skipSoft:
-                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA1_" + str(ind))
+                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                     if constraint["mode"] == "A":
-                        model.addConstr(gp.quicksum([m_vars[i, team, j] 
-                                            for i in range(n_teams) if i != team  
-                                            for j in slots]) - slack <= c_max,
+                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=True)  
+                                            for slot in slots]) - slack <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
                     elif constraint["mode"] == "H": 
-                        model.addConstr(gp.quicksum([m_vars[team, i, j] 
-                                            for i in range(n_teams) if i != team 
-                                            for j in slots]) - slack <= c_max,
+                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=False) 
+                                            for slot in slots]) - slack <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
                     else:
                         raise Exception("Mode HA for CA1 not implemented!")
@@ -201,7 +197,7 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
                                             for j in slots]) <= c_max,
                                         name="CA2_" + str(team) + "_" + str(ind))
                 elif not skipSoft:
-                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA2_" + str(ind))
+                    slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                     if constraint["mode1"] == "A":
                         model.addConstr(gp.quicksum([m_vars[i, team, j] 
                                             for i in teams2 if i != team
@@ -573,7 +569,7 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
     #model.setParam("PoolSolutions", 100)
     #model.setParam("PoolSearchMode", 2)
     #model.setParam("MIPFocus", 1)
-    #model.setParam("Heuristics", 0.5)
+    model.setParam("Heuristics", 0.5)
 
     # Tuning parameters
     model.setParam("Presolve", 2)
