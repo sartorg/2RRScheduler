@@ -27,7 +27,7 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
 
     # Create Gurobi model
     model = gp.Model(prob.name)
-    model.setParam("Threads", 2)
+    model.setParam("Threads", 1)
 
     if debug:
         print("Creating binary variables...")
@@ -569,7 +569,7 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
     #model.setParam("PoolSolutions", 100)
     #model.setParam("PoolSearchMode", 2)
     #model.setParam("MIPFocus", 1)
-    model.setParam("Heuristics", 0.5)
+    #model.setParam("Heuristics", 0.5)
 
     # Tuning parameters
     model.setParam("Presolve", 2)
