@@ -8,8 +8,9 @@ import os
 import gurobipy as gp
 from gurobipy import GRB
 from TwoRRProblem import TwoRRProblem, write_solution
+from TwoRRValidator import validate_constraint
 
-def solve_naive(prob: TwoRRProblem, skipSoft=False):
+def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
     # Set up and solve with Gurobi a "naive" model 
     # for the TwoRRProblem. The model is naive in
     # the sense that il follows the standard integer
@@ -17,10 +18,12 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
     # model and hope that Gurobi will be able to handle
     # it. This works only for simple problems.
 
-    debug = True
+    if debug:
+        print("Solving problem: " + prob.name)
+
     n_teams = len(prob.teams)
     if debug:
-        print(n_teams)
+        print("Num. teams:" + str(n_teams))
     n_slots = len(prob.slots)
     if debug:
         print(n_slots)
@@ -586,11 +589,21 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False):
 
     write_status(model)
 
-    if (debug and model.status == GRB.OPTIMAL):
-        print_solution(m_vars, n_teams, n_slots)
-    
+    if (model.status == GRB.OPTIMAL):
+        solution = make_solution(m_vars, n_teams, n_slots)
+        if debug:
+            print_solution(solution)
+        
     if (model.status == GRB.OPTIMAL):
         write_solution("solution.xml", prob, m_vars, model.objVal)
+    
+    obj = 0
+    for constraint in prob.constraints:
+        violated,diff,penalty = validate_constraint(prob, solution, constraint)
+        obj += penalty
+        print(constraint[0], (violated,diff,penalty))
+    
+    print("Obj validator: " + str(obj))
 
 
 def write_status(model: gp.Model):
@@ -607,14 +620,24 @@ def write_status(model: gp.Model):
         print('Optimization ended with status %d' % model.status)
 
 
-def print_solution(m_vars, n_teams, n_slots):
-    # Displays the solution in a more human readble format
+def make_solution(m_vars, n_teams, n_slots):
+    # Computes the solution from the binary variables of the model
+    solution = []
     for slot in range(n_slots):
-        print("Slot " + str(slot) + ":")
+        games = []
         for team1 in range(n_teams):
             for team2 in range(n_teams):
                 if team1 == team2:
                     continue
                 if (m_vars[team1, team2, slot].x > 0.5):
-                    print("({},{})".format(str(team1), str(team2)), end=' ')
+                    games.append((team1, team2))
+        solution.append(games)
+    return solution
+
+def print_solution(solution):
+    # Displays the solution in a more human readble format
+    for slot,games in enumerate(solution):
+        print("Slot " + str(slot) + ":")
+        for h,a in games:
+            print("({},{})".format(str(h), str(a)), end=' ')
         print("")
