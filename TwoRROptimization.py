@@ -22,11 +22,10 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
         print("Solving problem: " + prob.name)
 
     n_teams = len(prob.teams)
-    if debug:
-        print("Num. teams:" + str(n_teams))
     n_slots = len(prob.slots)
+
     if debug:
-        print(n_slots)
+        print("Num. teams: " + str(n_teams))
 
     # Create Gurobi model
     model = gp.Model(prob.name)
