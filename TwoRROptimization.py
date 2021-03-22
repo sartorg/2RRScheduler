@@ -10,7 +10,7 @@ from gurobipy import GRB
 from TwoRRProblem import TwoRRProblem, write_solution
 from TwoRRValidator import validate_constraint
 
-def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
+def solve_naive(prob: TwoRRProblem, skipSoft=False, lazy=1, debug=True):
     # Set up and solve with Gurobi a "naive" model 
     # for the TwoRRProblem. The model is naive in
     # the sense that il follows the standard integer
@@ -148,25 +148,33 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
             for team in teams:
                 if constraint["type"] == "HARD":
                     if constraint["mode"] == "A":
-                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=True) 
+                        constr = model.addConstr(gp.quicksum([get_team_var(team, slot, away=True) 
                                             for slot in slots]) <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     elif constraint["mode"] == "H":
-                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=False) 
+                        constr = model.addConstr(gp.quicksum([get_team_var(team, slot, away=False) 
                                             for slot in slots]) <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         raise Exception("Mode HA for CA1 not implemented!")
                 elif not skipSoft:
                     slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                     if constraint["mode"] == "A":
-                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=True)  
+                        constr = model.addConstr(gp.quicksum([get_team_var(team, slot, away=True)  
                                             for slot in slots]) - slack <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     elif constraint["mode"] == "H": 
-                        model.addConstr(gp.quicksum([get_team_var(team, slot, away=False) 
+                        constr = model.addConstr(gp.quicksum([get_team_var(team, slot, away=False) 
                                             for slot in slots]) - slack <= c_max,
                                         name="CA1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         raise Exception("Mode HA for CA1 not implemented!")
         if c_name == "CA2":
@@ -181,43 +189,55 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
             for team in teams1:
                 if constraint["type"] == "HARD":
                     if constraint["mode1"] == "A":
-                        model.addConstr(gp.quicksum([m_vars[i, team, j] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, team, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) <= c_max,
                                         name="CA2_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     elif constraint["mode1"] == "H":
-                        model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                        constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) <= c_max,
                                         name="CA2_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
-                        model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                        constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) + 
                                         gp.quicksum([m_vars[i, team, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) <= c_max,
                                         name="CA2_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                 elif not skipSoft:
                     slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                     if constraint["mode1"] == "A":
-                        model.addConstr(gp.quicksum([m_vars[i, team, j] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, team, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) - slack <= c_max,
                                         name="CA2_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     elif constraint["mode1"] == "H":
-                        model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                        constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) - slack <= c_max,
                                         name="CA2_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
-                        model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                        constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) + 
                                         gp.quicksum([m_vars[i, team, j] 
                                             for i in teams2 if i != team
                                             for j in slots]) - slack <= c_max,
                                         name="CA2_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
         if c_name == "CA3":
             teams1 = [int(t) for t in constraint["teams1"].split(';')]
             teams2 = [int(t) for t in constraint["teams2"].split(';')]
@@ -231,50 +251,62 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
                 if constraint["type"] == "HARD":
                     if constraint["mode1"] == "A":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
-                            model.addConstr(gp.quicksum([m_vars[i, team, j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, team, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) <= c_max,
                                             name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                     elif constraint["mode1"] == "H":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
-                            model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) <= c_max,
                                             name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                     else:
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
-                            model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) + 
                                             gp.quicksum([m_vars[i, team, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) <= c_max,
                                             name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                 elif not skipSoft:
                     if constraint["mode1"] == "A":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
                             slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                            model.addConstr(gp.quicksum([m_vars[i, team, j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, team, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) - slack <= c_max,
                                             name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                     elif constraint["mode1"] == "H":
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
                             slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                            model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) - slack <= c_max,
                                             name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                     else:
                         for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
                             slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                            model.addConstr(gp.quicksum([m_vars[team, i, j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[team, i, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) + 
                                             gp.quicksum([m_vars[i, team, j] 
                                                 for i in teams2 if i != team
                                                 for j in slots]) - slack <= c_max,
                                             name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
         if c_name == "CA4":
             slots = [int(s) for s in constraint["slots"].split(';')]
             teams1 = [int(t) for t in constraint["teams1"].split(';')]
@@ -287,33 +319,41 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
             if constraint["type"] == "HARD":
                 if constraint["mode1"] == "A":
                     if constraint["mode2"] == "GLOBAL":
-                        model.addConstr(gp.quicksum([m_vars[i, j, z] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, j, z] 
                                             for i in teams2
                                             for j in teams1 if i != j
                                             for z in slots]) <= c_max,
                                         name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         for slot in slots:
-                            model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams2
                                                 for j in teams1 if i != j]) <= c_max,
                                             name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                 elif constraint["mode1"] == "H":
                     if constraint["mode2"] == "GLOBAL":
-                        model.addConstr(gp.quicksum([m_vars[i, j, z] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, j, z] 
                                             for i in teams1
                                             for j in teams2 if i != j
                                             for z in slots]) <= c_max,
                                         name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         for slot in slots:
-                            model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams1
                                                 for j in teams2 if i != j]) <= c_max,
                                             name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                 else:
                     if constraint["mode2"] == "GLOBAL":
-                        model.addConstr(gp.quicksum([m_vars[i, j, z] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, j, z] 
                                             for i in teams1
                                             for j in teams2 if i != j
                                             for z in slots]) + 
@@ -322,50 +362,62 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
                                             for j in teams1 if i != j
                                             for z in slots]) <= c_max,
                                         name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         for slot in slots:
-                            model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams1
                                                 for j in teams2 if i != j])  + 
                                             gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams2
                                                 for j in teams1 if i != j]) <= c_max,
                                             name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
             elif not skipSoft:
                 if constraint["mode1"] == "A":
                     if constraint["mode2"] == "GLOBAL":
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(gp.quicksum([m_vars[i, j, z] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, j, z] 
                                             for i in teams2
                                             for j in teams1 if i != j
                                             for z in slots]) - slack <= c_max,
                                         name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         for slot in slots:
                             slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA4_" + str(slot) + "_" + str(ind))
-                            model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams2
                                                 for j in teams1 if i != j]) - slack <= c_max,
                                             name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                 elif constraint["mode1"] == "H":
                     if constraint["mode2"] == "GLOBAL":
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(gp.quicksum([m_vars[i, j, z] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, j, z] 
                                             for i in teams1
                                             for j in teams2 if i != j
                                             for z in slots]) - slack<= c_max,
                                         name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         for slot in slots:
                             slack = model.addVar(vtype=GRB.INTEGER, obj=penalty, name="sCA4_" + str(slot) + "_" + str(ind))
-                            model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams1
                                                 for j in teams2 if i != j]) - slack <= c_max,
                                             name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
                 else:  
                     if constraint["mode2"] == "GLOBAL":
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(gp.quicksum([m_vars[i, j, z] 
+                        constr = model.addConstr(gp.quicksum([m_vars[i, j, z] 
                                             for i in teams1
                                             for j in teams2 if i != j
                                             for z in slots]) + 
@@ -374,16 +426,20 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
                                             for j in teams1 if i != j
                                             for z in slots]) - slack <= c_max,
                                         name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                     else:
                         for slot in slots:
                             slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                            model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                            constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams1
                                                 for j in teams2 if i != j])  + 
                                                 gp.quicksum([m_vars[i, j, slot] 
                                                 for i in teams2
                                                 for j in teams1 if i != j]) - slack <= c_max,
                                             name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
         # Game constraints
         if c_name == "GA1":
             slots = [int(s) for s in constraint["slots"].split(';')]
@@ -392,25 +448,33 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
             c_max = int(constraint["max"])
             penalty = int(constraint["penalty"])
             if constraint["type"] == "HARD":
-                model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
                                     for slot in slots]) <= c_max,
                                 name="GA1_max_" + str(slot) + "_" + str(ind))
-                model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                if lazy:
+                    constr.Lazy = lazy
+                constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
                                     for slot in slots]) >= c_min,
                                 name="GA1_min_" + str(slot) + "_" + str(ind))
+                if lazy:
+                    constr.Lazy = lazy
             elif not skipSoft:
                 slack_plus = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
                                     for slot in slots]) - slack_plus <= c_max,
                                 name="GA1_max_" + str(slot) + "_" + str(ind))
+                if lazy:
+                    constr.Lazy = lazy
                 slack_minus = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                model.addConstr(gp.quicksum([m_vars[i, j, slot] 
+                constr = model.addConstr(gp.quicksum([m_vars[i, j, slot] 
                                     for i,j in games
                                     for slot in slots]) + slack_minus >= c_min,
                                 name="GA1_min_" + str(slot) + "_" + str(ind))
+                if lazy:
+                    constr.Lazy = lazy
         # Break constraints
         if c_name == "BR1":
             teams = [int(t) for t in constraint["teams"].split(';')]
@@ -421,54 +485,70 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
             if constraint["type"] == "HARD":
                 if mode == "A":
                     for team in teams:
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=True) 
+                        constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=True) 
                                             for slot in slots if slot != 0]) <= intp,
                                         name="BR1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                 elif mode == "H":
                     for team in teams:
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) 
+                        constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) 
                                             for slot in slots if slot != 0]) <= intp,
                                         name="BR1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                 else:
                     for team in teams:
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
+                        constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
                                             for slot in slots if slot != 0]) <= intp,
                                         name="BR1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
             elif not skipSoft:
                 if mode == "A":
                     for team in teams:
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=True) 
+                        constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=True) 
                                             for slot in slots if slot != 0]) - slack <= intp,
                                         name="BR1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                 elif mode == "H":
                     for team in teams:
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) 
+                        constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) 
                                             for slot in slots if slot != 0]) - slack <= intp,
                                         name="BR1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
                 else:
                     for team in teams:
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                        model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
+                        constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
                                             for slot in slots if slot != 0]) - slack <= intp,
                                         name="BR1_" + str(team) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
         if c_name == "BR2":
             teams = [int(t) for t in constraint["teams"].split(';')]
             slots = [int(s) for s in constraint["slots"].split(';')]
             intp = int(constraint["intp"])
             penalty = int(constraint["penalty"])
             if constraint["type"] == "HARD":
-                model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
+                constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
                                     for team in teams
                                     for slot in slots if slot != 0]) <= intp,
                                 name="BR2_" + str(ind))
+                if lazy:
+                    constr.Lazy = lazy
             elif not skipSoft:
                 slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
-                model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
+                constr = model.addConstr(gp.quicksum([get_break_var(team, slot, away=False) + get_break_var(team, slot, away=True)
                                     for team in teams
                                     for slot in slots if slot != 0]) - slack <= intp,
                                 name="BR2_" + str(ind))
+                if lazy:
+                    constr.Lazy = lazy
         # Fairness constraints
         if c_name == "FA2":
             teams = [int(t) for t in constraint["teams"].split(';')]
@@ -481,20 +561,24 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
                         if team1 == team2:
                             continue
                         for slot in slots:
-                            model.addConstr(gp.quicksum([m_vars[team1,i,j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team1
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team2
                                                             for j in range(slot + 1)]) <= intp,
                                             name="FA2_1_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
-                            model.addConstr(gp.quicksum([m_vars[team2,i,j] 
+                            if lazy:
+                                constr.Lazy = lazy
+                            constr = model.addConstr(gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team1
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team2
                                                             for j in range(slot + 1)]) <= intp,
                                             name="FA2_2_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
             elif not skipSoft:
                 for team1 in teams:
                     for team2 in teams:
@@ -505,20 +589,25 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
                         model.addConstr(largest_diff_var - slack <= intp)
                         for slot in slots:
                             diff_var =  model.addVar(vtype=GRB.INTEGER, name="diff_" + str(team1) + "_" + str(team2) + "_" + str(slot))
-                            model.addConstr(gp.quicksum([m_vars[team1,i,j] 
+                            constr = model.addConstr(gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team1
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team2
                                                             for j in range(slot + 1)]) <= diff_var,
                                             name="FA2_1_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
-                            model.addConstr(gp.quicksum([m_vars[team2,i,j] 
+                            if lazy:
+                                constr.Lazy = lazy
+                            constr = model.addConstr(gp.quicksum([m_vars[team2,i,j] 
                                                             for i in range(n_teams) if i != team2
                                                             for j in range(slot + 1)]) - \
                                             gp.quicksum([m_vars[team1,i,j] 
                                                             for i in range(n_teams) if i != team1
                                                             for j in range(slot + 1)]) <= diff_var,
                                             name="FA2_2_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
+
                             model.addConstr(diff_var <= largest_diff_var, name="FA2_3_" + str(team1) + "_" + str(team2) + "_" + str(slot) + "_" + str(ind))
                             
         # Separation constraints
@@ -536,16 +625,21 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, debug = True):
                         min2_var =  model.addVar(vtype=GRB.BINARY, name="min2_" + str(teams[i]) + "_" + str(teams[j]))
                         slack = model.addVar(vtype=GRB.INTEGER, obj=penalty)
                         model.addConstr(sepc_var - slack <= - c_min - 1 + n_slots)
-                        model.addConstr(gp.quicksum([slot * m_vars[teams[i],teams[j],slot] 
+                        constr = model.addConstr(gp.quicksum([slot * m_vars[teams[i],teams[j],slot] 
                                                         for slot in range(n_slots)]) - \
                                         gp.quicksum([slot * m_vars[teams[j],teams[i],slot] 
                                                         for slot in range(n_slots)]) + n_slots <= sepc_var + min1_var * 2 * n_slots,
-                                        name="SE1_1_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind)) 
-                        model.addConstr(gp.quicksum([slot * m_vars[teams[j],teams[i],slot] 
+                                        name="SE1_1_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+                        constr = model.addConstr(gp.quicksum([slot * m_vars[teams[j],teams[i],slot] 
                                                         for slot in range(n_slots)]) - \
                                         gp.quicksum([slot * m_vars[teams[i],teams[j],slot] 
                                                         for slot in range(n_slots)]) + n_slots <= sepc_var + min2_var * 2 * n_slots,
                                         name="SE1_2_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+
                         model.addConstr(min1_var + min2_var == 1, name="SE1_3_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind))
     
     if debug:
