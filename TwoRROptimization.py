@@ -48,6 +48,13 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, lazy=1, debug=True):
     if debug:
         print("Adding basic 2RR constraints...")
 
+    # Add constraints that force each team to play against
+    # another team at most once per slot.
+    for team1 in range(n_teams):
+            for slot in range(n_slots):
+                model.addConstr(gp.quicksum([m_vars[team1, team2, slot] + m_vars[team2, team1, slot]
+                                            for team2 in range(n_teams) if team1 != team2]) == 1)
+
     # Add constraints that force each team to meet another
     # team exactly once in a home game
     for team1 in range(n_teams):
@@ -55,13 +62,6 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, lazy=1, debug=True):
             if team1 == team2:
                 continue
             model.addConstr(gp.quicksum([m_vars[team1, team2, slot] for slot in range(n_slots)]) == 1)
-
-    # Add constraints that force each team to play against
-    # another team at most once per slot.
-    for team1 in range(n_teams):
-            for slot in range(n_slots):
-                model.addConstr(gp.quicksum([m_vars[team1, team2, slot] + m_vars[team2, team1, slot]
-                                            for team2 in range(n_teams) if team1 != team2]) <= 1)
 
     ########## These two constraints are not necessary, and they do not help the model. ##########
     # # Add constraints that force each team to play against
@@ -85,9 +85,9 @@ def solve_naive(prob: TwoRRProblem, skipSoft=False, lazy=1, debug=True):
         for team1 in range(n_teams):
             for team2 in range(team1 + 1, n_teams):
                 model.addConstr(gp.quicksum([m_vars[team1,team2,slot] + m_vars[team2,team1,slot] 
-                                            for slot in range(int(n_slots/2))]) == 1)
+                                            for slot in range(int(n_slots/2))]) <= 1)
                 model.addConstr(gp.quicksum([m_vars[team1,team2,slot] + m_vars[team2,team1,slot] 
-                                            for slot in range(int(n_slots/2), n_slots)]) == 1)
+                                            for slot in range(int(n_slots/2), n_slots)]) <= 1)
     
     # Additional vars that determines weather a team plays home or away in a certain slot.
     use_team_vars = False # Apparently, the algorithm is faster without these auxiliary vars.
