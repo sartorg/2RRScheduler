@@ -10,6 +10,7 @@ import gurobipy as gp
 from gurobipy import GRB
 from TwoRRProblem import TwoRRProblem, write_solution
 from TwoRRValidator import validate_constraint
+from TwoRRSlave import solve_slave
 
 def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
     # Set up and solve with Gurobi a "naive" model 
@@ -29,8 +30,10 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
         print("Num. teams: " + str(n_teams))
 
     # Create Gurobi model
-    model = gp.Model(prob.name)
-    model.setParam("Threads", 4)
+    env = gp.Env()
+    model = gp.Model(prob.name, env)
+    model.setParam("Threads", 1)
+    model.setParam("LazyConstraints", 1)
 
     if debug:
         print("Creating binary variables...")
@@ -255,7 +258,23 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
             solcnt = model.cbGet(GRB.Callback.MIPSOL_SOLCNT)
             x = model.cbGetSolution(m_vars)
             solution = make_solution(x, n_teams, n_slots)
-            write_ha_pattern("ha_pattern_{}".format(solcnt), solution)
+            # write_ha_pattern("ha_pattern_{}".format(solcnt), solution)
+            feasible = solve_slave(prob, env, solution)
+            if not feasible:
+                #print(sum(sum(pattern) for pattern in solution))
+                print("Generating lazy cut...")
+                n_zeros = sum(pattern.count(1) for pattern in solution)
+                #print(n_zeros)
+                h_distance = 1 # Minimum desired Hamming dinstance
+                model.cbLazy(gp.quicksum([m_vars[team, slot] 
+                                            for team in range(n_teams)
+                                            for slot in range(n_slots) 
+                                            if solution[team][slot] < 0.5]) - 
+                             gp.quicksum([m_vars[team, slot] 
+                                            for team in range(n_teams)
+                                            for slot in range(n_slots) 
+                                            if solution[team][slot] > 0.5]) +
+                             n_zeros >= h_distance)
     
     def write_ha_pattern(file_name, solution):
         with open(file_name, "w") as myfile:
@@ -271,16 +290,18 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
                 myfile.write("\n")
 
     # Solution pool
-    model.setParam("PoolSolutions", 1)
-    model.setParam("PoolSearchMode", 2)
-    model.setParam("MIPFocus", 1)
-    model.setParam("Heuristics", 0.5)
+    # model.setParam("PoolSolutions", 1)
+    # model.setParam("PoolSearchMode", 2)
+    # model.setParam("MIPFocus", 1)
+    # model.setParam("Heuristics", 0.5)
 
     # Tuning parameters
     model.setParam("Presolve", 2)
     model.setParam("Symmetry", 2)
     model.setParam("GomoryPasses", 1)
     model.setParam("PrePasses", 2)
+    model.setParam("FeasibilityTol", 1e-9)
+    model.setParam("IntFeasTol", 1e-9)
 
     if debug:
         print("Solving...")
@@ -298,6 +319,10 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
         solution = make_solution(m_vars, n_teams, n_slots)
         if debug:
             print_solution(solution)
+    
+    if debug:
+        print("Writing problem to file...")
+        model.write("problem.lp")
         
     # if (model.status == GRB.OPTIMAL):
     #     write_solution("solution.xml", prob, m_vars, model.objVal)
@@ -328,20 +353,20 @@ def write_status(model: gp.Model):
 def make_solution(m_vars, n_teams, n_slots):
     # Computes the solution from the binary variables of the model
     solution = []
-    for slot in range(n_slots):
+    for team in range(n_teams):
         ha_pattern = []
-        for team in range(n_teams):
+        for slot in range(n_slots):
             var_value = m_vars[team, slot]
             if isinstance(var_value, gp.Var):
                 var_value = var_value.x
-            ha_pattern.append(var_value)
+            ha_pattern.append(int(var_value))
         solution.append(ha_pattern)
     return solution
 
 def print_solution(solution):
     # Displays the solution in a more human readble format
-    for slot,games in enumerate(solution):
-        print("Slot " + str(slot) + ":")
+    for team,games in enumerate(solution):
+        print("Team " + str(team) + ":")
         for ha in games:
             if (ha == 1):
                 print("H", end=' ')
