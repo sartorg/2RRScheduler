@@ -10,7 +10,7 @@ import gurobipy as gp
 from gurobipy import GRB
 from TwoRRProblem import TwoRRProblem, write_solution
 from TwoRRValidator import validate_constraint
-from TwoRRSlave import solve_slave
+from TwoRRSlave import solve_slave, create_slave
 
 def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
     # Set up and solve with Gurobi a "naive" model 
@@ -32,6 +32,7 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
     # Create Gurobi model
     env = gp.Env()
     model = gp.Model(prob.name, env)
+    slave_model = create_slave(prob, env, skipSoft, lazy, debug)
     model.setParam("Threads", 1)
     model.setParam("LazyConstraints", 1)
 
@@ -44,6 +45,16 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
     for team in range(n_teams):
         for slot in range(n_slots):
             m_vars[team, slot] = model.addVar(vtype=GRB.BINARY, name="x_" + str(team) + "_" + str(slot))
+
+    # 2RR constraints
+
+    # In each slot, n_teams/2 home and n_teams/2 away
+    for slot in range(n_slots):
+        model.addConstr(gp.quicksum([m_vars[team, slot] for team in range(n_teams)]) == n_teams / 2)
+    
+    # For each team, n_slots/2 home and n_slots/2 away
+    for team in range(n_teams):
+        model.addConstr(gp.quicksum([m_vars[team, slot] for slot in range(n_slots)]) == n_slots / 2)
     
     # Additional vars that determine whether a team has an away break or a home break
     # in a certain slot.
@@ -258,13 +269,11 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
             solcnt = model.cbGet(GRB.Callback.MIPSOL_SOLCNT)
             x = model.cbGetSolution(m_vars)
             solution = make_solution(x, n_teams, n_slots)
+            # print_solution(solution)
             # write_ha_pattern("ha_pattern_{}".format(solcnt), solution)
-            feasible = solve_slave(prob, env, solution)
+            feasible = solve_slave(prob, slave_model, solution, debug)
             if not feasible:
-                #print(sum(sum(pattern) for pattern in solution))
-                print("Generating lazy cut...")
                 n_zeros = sum(pattern.count(1) for pattern in solution)
-                #print(n_zeros)
                 h_distance = 1 # Minimum desired Hamming dinstance
                 model.cbLazy(gp.quicksum([m_vars[team, slot] 
                                             for team in range(n_teams)
@@ -359,7 +368,10 @@ def make_solution(m_vars, n_teams, n_slots):
             var_value = m_vars[team, slot]
             if isinstance(var_value, gp.Var):
                 var_value = var_value.x
-            ha_pattern.append(int(var_value))
+            if var_value > 0.5:
+                ha_pattern.append(1)
+            else:
+                ha_pattern.append(0)
         solution.append(ha_pattern)
     return solution
 
@@ -368,7 +380,7 @@ def print_solution(solution):
     for team,games in enumerate(solution):
         print("Team " + str(team) + ":")
         for ha in games:
-            if (ha == 1):
+            if (ha > 0.5):
                 print("H", end=' ')
             else:
                 print("A", end=' ')

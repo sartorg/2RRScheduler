@@ -13,16 +13,49 @@ from gurobipy import GRB
 from TwoRRProblem import TwoRRProblem, write_solution
 from TwoRRValidator import validate_constraint
 
-def solve_slave(prob: TwoRRProblem, env, ha_patterns, skipSoft=False, lazy=0, debug=True):
+def solve_slave(prob, model, ha_patterns, debug = True):
+
+    n_teams = len(prob.teams)
+    n_slots = len(prob.slots)
+
+    # Fix the variables
+    for team1 in range(n_teams):
+        for team2 in range(n_teams):
+            if team1 == team2:
+                continue
+            for slot in range(n_slots):
+                if ha_patterns[team1][slot] == 0 or ha_patterns[team2][slot] == 1:
+                    model._vars[team1, team2, slot].ub = 0
+                else:
+                    model._vars[team1, team2, slot].ub = 1
+
+    # Optimize
+    model.optimize()
+
+    #write_status(model)
+
+    if (model.status == GRB.OPTIMAL):
+        solution = make_solution(model._vars, n_teams, n_slots)
+        obj = 0
+        for constraint in prob.constraints:
+            violated,diff,penalty = validate_constraint(prob, solution, constraint)
+            obj += penalty
+            #print(constraint[0], (violated,diff,penalty))
+        if model._best_obj == -1 or obj < model._best_obj:
+            model._best_obj = obj
+            print(">>>> Slave: Found new best incumbent with value: " + str(obj))
+            write_solution("ms_solution.xml", prob, model._vars, model.objVal)
+    
+    return False
+
+
+def create_slave(prob: TwoRRProblem, env, skipSoft=False, lazy=0, debug=True):
     # Set up and solve with Gurobi a "naive" model 
     # for the TwoRRProblem. The model is naive in
     # the sense that il follows the standard integer
     # programming techniques, building a large complex
     # model and hope that Gurobi will be able to handle
     # it. This works only for simple problems.
-
-    if debug:
-        print("Finding assignment...")
 
     n_teams = len(prob.teams)
     n_slots = len(prob.slots)
@@ -31,21 +64,25 @@ def solve_slave(prob: TwoRRProblem, env, ha_patterns, skipSoft=False, lazy=0, de
     model = gp.Model(prob.name, env)
     model.setParam("OutputFlag", 0)
     model.setParam("Threads", 1)
+    # Tuning parameters
+    model.setParam("Presolve", 2)
+    model.setParam("Symmetry", 2)
+    model.setParam("GomoryPasses", 1)
+    model.setParam("PrePasses", 2)
+
+    model._best_obj = -1
 
     # Create variables and store them in a dictionary:
     # m_vars[home_team, away_team, slot]
     m_vars = dict()
+    model._vars = m_vars
     for team1 in range(n_teams):
         for team2 in range(n_teams):
             if team1 == team2:
                 continue
             for slot in range(n_slots):
-                if ha_patterns[team1][slot] == 0 or ha_patterns[team2][slot] == 1:
-                    m_vars[team1, team2, slot] = \
-                        model.addVar(vtype=GRB.BINARY, ub=0, name="x_" + str(team1) + "_" + str(team2) + "_" + str(slot))
-                else:
-                    m_vars[team1, team2, slot] = \
-                        model.addVar(vtype=GRB.BINARY, name="x_" + str(team1) + "_" + str(team2) + "_" + str(slot))
+                m_vars[team1, team2, slot] = \
+                    model.addVar(vtype=GRB.BINARY, name="x_" + str(team1) + "_" + str(team2) + "_" + str(slot))
 
     # Add constraints that force each team to play against
     # another team at most once per slot.
@@ -408,58 +445,24 @@ def solve_slave(prob: TwoRRProblem, env, ha_patterns, skipSoft=False, lazy=0, de
                         constr = model.addConstr(min1_var + min2_var == 1, name="SE1_3_" + str(teams[i]) + "_" + str(teams[j]) + "_" + str(ind))
                         if lazy:
                             constr.Lazy = lazy
-    
-    # if debug:
-    #     model.update()
-    #     print("Num vars: " + str(model.NumVars))
-    #     print("Num constraints: " + str(model.NumConstrs))
 
-    # if debug:
-    #     print("Writing problem to file...")
-    #     model.write("problem.lp")
-
-    # Tuning parameters
-    model.setParam("Presolve", 2)
-    model.setParam("Symmetry", 2)
-    model.setParam("GomoryPasses", 1)
-    model.setParam("PrePasses", 2)
-
-    if debug:
-        print(">>>>Slave: Solving...")
-
-    # Optimize
-    model.optimize()
-
-    write_status(model)
-
-    if (model.status == GRB.OPTIMAL):
-        print(">>>>Slave: *************************** OPTIMAL ***************************")
-        solution = make_solution(m_vars, n_teams, n_slots)
-        write_solution("solution.xml", prob, m_vars, model.objVal)
-        obj = 0
-        for constraint in prob.constraints:
-            violated,diff,penalty = validate_constraint(prob, solution, constraint)
-            obj += penalty
-            print(constraint[0], (violated,diff,penalty))
-        
-        print(">>>>Slave: Obj validator: " + str(obj))
-        return True
-    
-    return False
+    return model
 
 
 def write_status(model: gp.Model):
     # Displays the status of Gurobi in a more human readable format
     if model.status == GRB.OPTIMAL:
-        print('>>>>Slave: Optimal objective: %g' % model.objVal)
+        print('>>>> Slave: Optimal objective: %g' % model.objVal)
     elif model.status == GRB.INF_OR_UNBD:
-        print('>>>>Slave: Model is infeasible or unbounded')
+        print('>>>> Slave: Model is infeasible or unbounded')
     elif model.status == GRB.INFEASIBLE:
-        print('>>>>Slave: Model is infeasible')
+        print('>>>> Slave: Model is infeasible')
+        #model.write("infeasible.lp")
+        #raise Exception("Infeasilbe!")
     elif model.status == GRB.UNBOUNDED:
-        print('>>>>Slave: Model is unbounded')
+        print('>>>> Slave: Model is unbounded')
     else:
-        print('>>>>Slave: Optimization ended with status %d' % model.status)
+        print('>>>> Slave: Optimization ended with status %d' % model.status)
 
 
 def make_solution(m_vars, n_teams, n_slots):
