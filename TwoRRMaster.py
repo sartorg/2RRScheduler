@@ -32,9 +32,21 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
     # Create Gurobi model
     env = gp.Env()
     model = gp.Model(prob.name, env)
-    slave_model = create_slave(prob, env, skipSoft, lazy, debug)
+    slave_model = create_slave(prob, env, skipSoft=True)
     model.setParam("Threads", 1)
     model.setParam("LazyConstraints", 1)
+
+    # Solution pool
+    # model.setParam("PoolSolutions", 1)
+    # model.setParam("PoolSearchMode", 2)
+    model.setParam("MIPFocus", 1)
+    model.setParam("Heuristics", 0.5)
+
+    # Tuning parameters
+    model.setParam("Presolve", 2)
+    model.setParam("Symmetry", 2)
+    model.setParam("GomoryPasses", 1)
+    model.setParam("PrePasses", 2)
 
     if debug:
         print("Creating binary variables...")
@@ -120,6 +132,112 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
                             constr.Lazy = lazy
                     else:
                         raise Exception("Mode HA for CA1 not implemented!")
+        if c_name == "CA3":
+            if constraint["type"] != "HARD":
+                continue
+            teams1 = [int(t) for t in constraint["teams1"].split(';')]
+            teams2 = sorted([int(t) for t in constraint["teams2"].split(';')])
+            # We deal with this constraint in the master only if ii involves all the teams
+            if len(teams2) != n_teams or teams2[0] != 0 or teams2[-1] != (n_teams - 1):
+                continue
+            c_min = int(constraint["min"])
+            c_max = int(constraint["max"])
+            intp = int(constraint["intp"])
+            penalty = int(constraint["penalty"])
+            if (c_min > 0):
+                raise Exception("Min value in CA3 not implemented!")
+            for team in teams1:
+                if constraint["mode1"] == "A":
+                    for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
+                        constr = model.addConstr(len(slots) - gp.quicksum([m_vars[team, slot] 
+                                            for slot in slots]) <= c_max,
+                                        name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+                elif constraint["mode1"] == "H":
+                    for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
+                        constr = model.addConstr(gp.quicksum([m_vars[team, slot] 
+                                            for slot in slots]) <= c_max,
+                                        name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+                else:
+                    for slots in [range(z, z + intp) for z in range(n_slots - intp + 1)]:
+                        constr = model.addConstr(gp.quicksum([m_vars[team, slot] 
+                                            for slot in slots]) - 
+                                        gp.quicksum([m_vars[team, slot] 
+                                            for slot in slots]) + len(slots) <= c_max,
+                                        name="CA3_" + str(team) + "_" + str(slots[0]) + "_" + str(slots[-1]) + "_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+
+        if c_name == "CA4":
+            slots = [int(s) for s in constraint["slots"].split(';')]
+            teams1 = [int(t) for t in constraint["teams1"].split(';')]
+            teams2 = sorted([int(t) for t in constraint["teams2"].split(';')])
+            # We deal with this constraint in the master only if ii involves all the teams
+            if len(teams2) != n_teams or teams2[0] != 0 or teams2[-1] != (n_teams - 1):
+                continue
+            c_min = int(constraint["min"])
+            c_max = int(constraint["max"])
+            penalty = int(constraint["penalty"])
+            if (c_min > 0):
+                raise Exception("Min value in CA4 not implemented!")
+            if constraint["type"] == "HARD":
+                if constraint["mode1"] == "A":
+                    if constraint["mode2"] == "GLOBAL":
+                        constr = model.addConstr(len(teams1) * len(slots) -
+                                            gp.quicksum([m_vars[team, slot] 
+                                                for team in teams1
+                                                for slot in slots]) <= c_max,
+                                        name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+                    else:
+                        for slot in slots:
+                            constr = model.addConstr(len(teams1) - 
+                                                gp.quicksum([m_vars[team, slot] 
+                                                    for team in teams1]) <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
+                elif constraint["mode1"] == "H":
+                    if constraint["mode2"] == "GLOBAL":
+                        constr = model.addConstr(gp.quicksum([m_vars[team, slot] 
+                                            for team in teams1
+                                            for slot in slots]) <= c_max,
+                                        name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+                    else:
+                        for slot in slots:
+                            constr = model.addConstr(gp.quicksum([m_vars[team, slot] 
+                                                for team in teams1]) <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
+                else:
+                    if constraint["mode2"] == "GLOBAL":
+                        constr = model.addConstr(len(teams1) * len(slots) - 
+                                            gp.quicksum([m_vars[team, slot] 
+                                                for team in teams1
+                                                for slot in slots]) + 
+                                            gp.quicksum([m_vars[team, slot] 
+                                                for team in teams1
+                                                for slot in slots]) <= c_max,
+                                        name="CA4_" + str(ind))
+                        if lazy:
+                            constr.Lazy = lazy
+                    else:
+                        for slot in slots:
+                            constr = model.addConstr(len(teams1) - 
+                                                gp.quicksum([m_vars[team, slot] 
+                                                    for team in teams1])  + 
+                                                gp.quicksum([m_vars[team, slot] 
+                                                    for team in teams1]) <= c_max,
+                                            name="CA4_" + str(slot) + "_" + str(ind))
+                            if lazy:
+                                constr.Lazy = lazy
 
         # Break constraints
         if c_name == "BR1":
@@ -270,7 +388,7 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
             x = model.cbGetSolution(m_vars)
             solution = make_solution(x, n_teams, n_slots)
             # print_solution(solution)
-            # write_ha_pattern("ha_pattern_{}".format(solcnt), solution)
+            write_ha_pattern("ha_pattern_{}".format(solcnt), solution)
             feasible = solve_slave(prob, slave_model, solution, debug)
             if not feasible:
                 n_zeros = sum(pattern.count(1) for pattern in solution)
@@ -287,40 +405,22 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
     
     def write_ha_pattern(file_name, solution):
         with open(file_name, "w") as myfile:
-            myfile.write(str(n_teams))
-            myfile.write("\n")
-            myfile.write(str(n_slots))
-            myfile.write("\n")
+            # myfile.write(str(n_teams))
+            # myfile.write("\n")
+            # myfile.write(str(n_slots))
+            # myfile.write("\n")
             for team, pattern in enumerate(solution):
-                myfile.write(str(team))
-                myfile.write("\n")
+                # myfile.write(str(team))
+                # myfile.write("\n")
                 for ha in pattern:
                     myfile.write(str(int(ha)))
                 myfile.write("\n")
-
-    # Solution pool
-    # model.setParam("PoolSolutions", 1)
-    # model.setParam("PoolSearchMode", 2)
-    # model.setParam("MIPFocus", 1)
-    # model.setParam("Heuristics", 0.5)
-
-    # Tuning parameters
-    model.setParam("Presolve", 2)
-    model.setParam("Symmetry", 2)
-    model.setParam("GomoryPasses", 1)
-    model.setParam("PrePasses", 2)
-    model.setParam("FeasibilityTol", 1e-9)
-    model.setParam("IntFeasTol", 1e-9)
 
     if debug:
         print("Solving...")
 
     # Optimize
-    if skipSoft:
-        #model.optimize(callbackGetIncumbent)
-        model.optimize()
-    else:
-        model.optimize(callbackGetIncumbent)
+    model.optimize(callbackGetIncumbent)
 
     write_status(model)
 

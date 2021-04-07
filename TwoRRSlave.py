@@ -29,12 +29,14 @@ def solve_slave(prob, model, ha_patterns, debug = True):
                 else:
                     model._vars[team1, team2, slot].ub = 1
 
+    print(">>>> Slave: Finding assignment...")
+
     # Optimize
     model.optimize()
 
-    #write_status(model)
+    write_status(model)
 
-    if (model.status == GRB.OPTIMAL):
+    if (model.solCount > 0):
         solution = make_solution(model._vars, n_teams, n_slots)
         obj = 0
         for constraint in prob.constraints:
@@ -45,6 +47,8 @@ def solve_slave(prob, model, ha_patterns, debug = True):
             model._best_obj = obj
             print(">>>> Slave: Found new best incumbent with value: " + str(obj))
             write_solution("ms_solution.xml", prob, model._vars, model.objVal)
+        else:
+            print(">>>> Slave: Found assignment with value: " + str(obj))
     
     return False
 
@@ -70,6 +74,11 @@ def create_slave(prob: TwoRRProblem, env, skipSoft=False, lazy=0, debug=True):
     model.setParam("GomoryPasses", 1)
     model.setParam("PrePasses", 2)
 
+    model.setParam("MIPFocus", 1)
+    model.setParam("Heuristics", 0.5)
+
+    model.setParam("TimeLimit", 600)
+
     model._best_obj = -1
 
     # Create variables and store them in a dictionary:
@@ -89,7 +98,7 @@ def create_slave(prob: TwoRRProblem, env, skipSoft=False, lazy=0, debug=True):
     for team1 in range(n_teams):
             for slot in range(n_slots):
                 model.addConstr(gp.quicksum([m_vars[team1, team2, slot] + m_vars[team2, team1, slot]
-                                            for team2 in range(n_teams) if team1 != team2]) == 1)
+                                            for team2 in range(n_teams) if team1 != team2]) <= 1)
 
     # Add constraints that force each team to meet another
     # team exactly once in a home game
@@ -461,6 +470,8 @@ def write_status(model: gp.Model):
         #raise Exception("Infeasilbe!")
     elif model.status == GRB.UNBOUNDED:
         print('>>>> Slave: Model is unbounded')
+    elif model.status == GRB.TIME_LIMIT:
+        print('>>>> Slave: Reached time limit')
     else:
         print('>>>> Slave: Optimization ended with status %d' % model.status)
 
