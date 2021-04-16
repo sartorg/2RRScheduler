@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 roxmltree = "0.14"
-satcoder = { git = "https://github.com/luteberget/salvers.git", rev = "76308c9" }
+satcoder = { git = "https://github.com/luteberget/salvers.git", rev = "76308c9", default-features = false, features = ["solver_cadical"]  }
 log = "0.4"
 stderrlog = "0.5"
 structopt = "0.3"
