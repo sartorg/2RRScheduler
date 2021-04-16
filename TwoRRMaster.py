@@ -26,6 +26,7 @@ def solve_master(filename, prob: TwoRRProblem, skipSoft=False, lazy=0, debug=Tru
 
     if debug:
         print("Solving problem: " + prob.name)
+    problem_filename = filename
 
     n_teams = len(prob.teams)
     n_slots = len(prob.slots)
@@ -392,7 +393,7 @@ def solve_master(filename, prob: TwoRRProblem, skipSoft=False, lazy=0, debug=Tru
             x = model.cbGetSolution(m_vars)
             solution = make_solution(x, n_teams, n_slots)
             # print_solution(solution)
-            write_ha_pattern("Temp/{os.path.basename(problem_filename)}_ha_pattern_{}".format(solcnt), solution)
+            write_ha_pattern(f"Temp/{os.path.basename(problem_filename)}_ha_pattern_{solcnt}", solution)
 
             #feasible = solve_slave(prob, slave_model, solution, debug)
             feasible = external_slave_solver(filename, prob, solution, debug)
@@ -419,21 +420,14 @@ def solve_master(filename, prob: TwoRRProblem, skipSoft=False, lazy=0, debug=Tru
         with suppress(subprocess.CalledProcessError):
             if debug:
                 print(f"Running external slave solver...")
-            slave_output = subprocess.check_output(['sportschedulingcompetition', 
+            slave_output = subprocess.check_output(['./sportschedulingcompetition', 
                     '--pattern-home-away', pattern_filename, 
                     '--xml-solutions', solutions_filename,
                     '--feasibility-timeout', str(int(60*5)), # 5 minutes until first feasible solution
-                    '--optimization-timeout', str(int(60*60)), # 1 hour optimization time
+                    '--optimization-solution-timeout', str(int(20*60)), # 20 minutes max between produced solutions
+                    '--total-optimization-timeout', str(int(2*60*60)), # 3 hour total optimization time
                     problem_filename
                     ])
-
-        #with open(solutions_filename, 'r') as file:
-        #    if len(file.read()) > 50:
-        #        print("solutions found")
-        #        sys.exit(0)
-        #    else:
-        #        print("no solutions in slave")
-
 
         solutions = read_multiple_solutions(solutions_filename)
         if debug:

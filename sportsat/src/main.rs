@@ -158,7 +158,10 @@ struct Opt {
     feasibility_timeout: Option<f32>,
 
     #[structopt(long)]
-    optimization_timeout: Option<f32>,
+    optimization_solution_timeout: Option<f32>,
+
+    #[structopt(long)]
+    total_optimization_timeout: Option<f32>,
 
     #[structopt(long)]
     quiet: bool,
@@ -393,7 +396,7 @@ fn main() {
             }
 
             if let Some(xml_out) = options.xml_solutions.clone() {
-                eprintln!("Writing feasible solution to {:?}", xml_out);
+                //eprintln!("Writing feasible solution to {:?}", xml_out);
                 use std::fs::OpenOptions;
                 use std::io::prelude::*;
                 let mut file = OpenOptions::new().create(true).append(true).open(xml_out).unwrap(); 
@@ -444,7 +447,7 @@ fn main() {
 
     //assert!(soft.iter().all(|x| x.lit.is_err()));
     
-    let mut remaining_optimization_time = options.optimization_timeout.clone();
+    let mut remaining_optimization_time = options.total_optimization_timeout.clone();
 
 
     'optimize: loop {
@@ -633,8 +636,12 @@ fn main() {
 
 
         solver.cadical.set_callbacks(None);
-        if let Some(to) = remaining_optimization_time.as_ref() {
-            solver.cadical.set_callbacks(Some(satcoder::solvers::cadical::Timeout::new(*to)));
+
+        let to = remaining_optimization_time.unwrap_or(f32::INFINITY)
+            .min(options.optimization_solution_timeout.unwrap_or(f32::INFINITY));
+
+        if to.is_finite() {
+            solver.cadical.set_callbacks(Some(satcoder::solvers::cadical::Timeout::new(to)));
         }
 
         let start = Instant::now();
@@ -644,6 +651,7 @@ fn main() {
 
         if let Some(to) = remaining_optimization_time.as_mut() {
             *to -= duration.as_secs_f32();
+            eprintln!("Found solution. Remaining slave opt. time {:?}", std::time::Duration::from_secs_f32(*to));
         }
 
         match result {
@@ -663,7 +671,7 @@ fn main() {
                 }
 
                 if let Some(xml_out) = options.xml_solutions.clone() {
-                    eprintln!("Writing feasible solution to {:?}", xml_out);
+                    //eprintln!("Writing feasible solution to {:?}", xml_out);
                     use std::fs::OpenOptions;
                     use std::io::prelude::*;
                     let mut file = OpenOptions::new().create(true).append(true).open(xml_out).unwrap(); 
