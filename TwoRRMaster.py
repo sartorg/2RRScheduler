@@ -392,7 +392,7 @@ def solve_master(filename, prob: TwoRRProblem, skipSoft=False, lazy=0, debug=Tru
             x = model.cbGetSolution(m_vars)
             solution = make_solution(x, n_teams, n_slots)
             # print_solution(solution)
-            write_ha_pattern("ha_pattern_{}".format(solcnt), solution)
+            write_ha_pattern("Temp/{os.path.basename(problem_filename)}_ha_pattern_{}".format(solcnt), solution)
 
             #feasible = solve_slave(prob, slave_model, solution, debug)
             feasible = external_slave_solver(filename, prob, solution, debug)
@@ -410,8 +410,8 @@ def solve_master(filename, prob: TwoRRProblem, skipSoft=False, lazy=0, debug=Tru
                          n_zeros >= h_distance)
 
     def external_slave_solver(problem_filename, prob, solution, debug):
-        pattern_filename = "ha_pattern_tmp"
-        solutions_filename = f"slavesolutions.xml"
+        pattern_filename = f"Temp/{os.path.basename(problem_filename)}_ha_pattern_temp"
+        solutions_filename = f"Temp/{os.path.basename(problem_filename)}_slavesolutions.xml"
         write_ha_pattern(pattern_filename, solution)
         if debug:
             print(f"wrote ha pattern file {pattern_filename}")
