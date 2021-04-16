@@ -1,0 +1,22 @@
+[package]
+name = "sportschedulingcompetition"
+version = "0.1.0"
+authors = ["Bjørnar Luteberget <Bjornar.Luteberget@sintef.no>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+roxmltree = "0.14"
+satcoder = { git = "https://github.com/luteberget/salvers.git", rev = "76308c9" }
+log = "0.4"
+stderrlog = "0.5"
+structopt = "0.3"
+itertools = "0.10"
+rand = "0.6"
+bitvec = "0.21"
+dispose = "0.2"
+
+[profile.release]
+lto = true
+
