@@ -3,6 +3,7 @@
 import xml.etree.ElementTree as et
 from xml.dom import minidom
 import gurobipy as gp
+from collections import defaultdict
 
 # pylint: disable=no-name-in-module, no-member
 
@@ -52,6 +53,29 @@ def read_instance(file_name):
 
     return prob
 
+
+def write_solution_tuples(file_name, prob, tuples, objective):
+    # Write a solution file in XML format
+    solution = et.Element("Solution")
+    meta_data = et.SubElement(solution, "MetaData")
+    instance_name = et.SubElement(meta_data, "InstanceName")
+    instance_name.text = prob.name
+    solution_name = et.SubElement(meta_data, "SolutionName")
+    solution_name.text = file_name
+    objective_value = et.SubElement(meta_data, "ObjectiveValue")
+    objective_value.attrib["infeasibility"] = "0"
+    objective_value.attrib["objective"] = str(int(objective))
+    games = et.SubElement(solution, "Games")
+    for slot,teams in enumerate(tuples):
+        for t1,t2 in teams:
+            game = et.SubElement(games, "ScheduledMatch")
+            game.attrib["home"] = str(t1)
+            game.attrib["away"] = str(t2)
+            game.attrib["slot"] = str(slot)
+
+    with open(file_name, "w") as myxml:
+        myxml.write(minidom.parseString(et.tostring(solution)).toprettyxml())
+
 def write_solution(file_name, prob, m_vars, objective):
     # Write a solution file in XML format
     solution = et.Element("Solution")
@@ -81,3 +105,21 @@ def write_solution(file_name, prob, m_vars, objective):
     with open(file_name, "w") as myxml:
         myxml.write(minidom.parseString(et.tostring(solution)).toprettyxml())
         
+def read_multiple_solutions(file_name):
+    tree = et.parse(file_name)
+    root = tree.getroot()
+    assert(root.tag == "MultipleSchedules")
+    return [read_solution_element(e) for e in root.findall('Solution')]
+
+def read_solution(file_name):
+    tree = et.parse(file_name)
+    root = tree.getroot()
+    return read_solution_element(root)
+
+def read_solution_element(root):
+    assert(root.tag == "Solution")
+    games = root.find("Games")
+    slots = defaultdict(list)
+    for m in games.findall('ScheduledMatch'):
+        slots[int(m.attrib['slot'])].append((int(m.attrib['home']), int(m.attrib['away'])))
+    return [matchings for i,matchings in sorted(list(slots.items()))]

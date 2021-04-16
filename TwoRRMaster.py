@@ -4,15 +4,19 @@
 
 # pylint: disable=no-name-in-module, no-member
 
-import os
+import os, sys
+import subprocess
+from contextlib import suppress
+
+
 #os.environ["GRB_LICENSE_FILE"] = "C:\\gurobi\\gurobi-ac.lic"
 import gurobipy as gp
 from gurobipy import GRB
-from TwoRRProblem import TwoRRProblem, write_solution
+from TwoRRProblem import TwoRRProblem, write_solution, read_multiple_solutions, write_solution_tuples
 from TwoRRValidator import validate_constraint
 from TwoRRSlave import solve_slave, create_slave
 
-def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
+def solve_master(filename, prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
     # Set up and solve with Gurobi a "naive" model 
     # for the TwoRRProblem. The model is naive in
     # the sense that il follows the standard integer
@@ -389,20 +393,79 @@ def solve_master(prob: TwoRRProblem, skipSoft=False, lazy=0, debug=True):
             solution = make_solution(x, n_teams, n_slots)
             # print_solution(solution)
             write_ha_pattern("ha_pattern_{}".format(solcnt), solution)
-            feasible = solve_slave(prob, slave_model, solution, debug)
-            if not feasible:
-                n_zeros = sum(pattern.count(1) for pattern in solution)
-                h_distance = 1 # Minimum desired Hamming dinstance
-                model.cbLazy(gp.quicksum([m_vars[team, slot] 
-                                            for team in range(n_teams)
-                                            for slot in range(n_slots) 
-                                            if solution[team][slot] < 0.5]) - 
-                             gp.quicksum([m_vars[team, slot] 
-                                            for team in range(n_teams)
-                                            for slot in range(n_slots) 
-                                            if solution[team][slot] > 0.5]) +
-                             n_zeros >= h_distance)
+
+            #feasible = solve_slave(prob, slave_model, solution, debug)
+            feasible = external_slave_solver(filename, prob, solution, debug)
+
+            n_zeros = sum(pattern.count(1) for pattern in solution)
+            h_distance = 1 # Minimum desired Hamming dinstance
+            model.cbLazy(gp.quicksum([m_vars[team, slot] 
+                                        for team in range(n_teams)
+                                        for slot in range(n_slots) 
+                                        if solution[team][slot] < 0.5]) - 
+                         gp.quicksum([m_vars[team, slot] 
+                                        for team in range(n_teams)
+                                        for slot in range(n_slots) 
+                                        if solution[team][slot] > 0.5]) +
+                         n_zeros >= h_distance)
+
+    def external_slave_solver(problem_filename, prob, solution, debug):
+        pattern_filename = "ha_pattern_tmp"
+        solutions_filename = f"slavesolutions.xml"
+        write_ha_pattern(pattern_filename, solution)
+        if debug:
+            print(f"wrote ha pattern file {pattern_filename}")
+        slave_output =""
+        with suppress(subprocess.CalledProcessError):
+            if debug:
+                print(f"Running external slave solver...")
+            slave_output = subprocess.check_output(['sportschedulingcompetition', 
+                    '--pattern-home-away', pattern_filename, 
+                    '--xml-solutions', solutions_filename,
+                    '--feasibility-timeout', str(int(60*5)), # 5 minutes until first feasible solution
+                    '--optimization-timeout', str(int(60*60)), # 1 hour optimization time
+                    problem_filename
+                    ])
+
+        #with open(solutions_filename, 'r') as file:
+        #    if len(file.read()) > 50:
+        #        print("solutions found")
+        #        sys.exit(0)
+        #    else:
+        #        print("no solutions in slave")
+
+
+        solutions = read_multiple_solutions(solutions_filename)
+        if debug:
+            print(f"slave solver produced:\n\t{len(solutions)} solutions")
+        for solution in solutions:
+            report_solution(problem_filename, prob, solution)
+
+        if debug:
+            print(f"Slave solver output: {slave_output}")
+
+        return len(solutions) > 0
     
+    def report_solution(problem_filename, prob, solution):
+        infeasibilities = []
+        obj_hard = 0
+        obj_soft = 0
+        for constraint in prob.constraints:
+            violated,_,penalty = validate_constraint(prob, solution, constraint)
+            if violated:
+                if constraint[1]["type"] == "HARD":
+                    infeasibilities.append(constraint[0])
+                    obj_hard += penalty
+                else:
+                    obj_soft += penalty
+
+        print("Infeasibilities: {}, Obj hard: {}, Obj soft: {}".format(len(infeasibilities), obj_hard, obj_soft))
+        if obj_hard != 0 or len(infeasibilities) > 0:
+            print(f"Warning: received infeasible solution from slave solver. This should not happen.")
+        print(infeasibilities)
+        output_filename = f"Output/{os.path.basename(problem_filename)}_solution_{obj_soft}.xml"
+        write_solution_tuples(output_filename, prob, solution, obj_soft)
+
     def write_ha_pattern(file_name, solution):
         with open(file_name, "w") as myfile:
             # myfile.write(str(n_teams))
