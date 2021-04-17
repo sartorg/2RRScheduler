@@ -25,14 +25,12 @@ def solve_master(filename, prob: TwoRRProblem, skipSoft=False, lazy=0, debug=Tru
     # it. This works only for simple problems.
 
     if debug:
-        print("Solving problem: " + prob.name)
+        print(prob)
+        
     problem_filename = filename
 
     n_teams = len(prob.teams)
     n_slots = len(prob.slots)
-
-    if debug:
-        print("Num. teams: " + str(n_teams))
 
     # Create Gurobi model
     env = gp.Env()

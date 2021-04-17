@@ -10,9 +10,8 @@ from collections import defaultdict
 class TwoRRProblem():
     # Represents a double round robin problem.
     # The structure is based on the RobinX format.
-    def __init__(self, name, data_type, contributor, year):
+    def __init__(self, name, contributor, year):
         self.name = name
-        self.data_type = data_type
         self.contributor = contributor
         self.year = year
         self.game_mode = "-"
@@ -24,30 +23,28 @@ class TwoRRProblem():
     def __repr__(self):
         my_str = ""
         my_str += "Name: " + self.name + "\n"
-        my_str += "Data type: " + self.data_type + "\n"
         my_str += "Contributor: " + self.contributor + "\n"
         my_str += "Year: " + self.year + "\n"
         my_str += "Game mode: " + self.game_mode + "\n"
         my_str += "Objective: " + self.objective + "\n"
-        my_str += "Teams:" + str(self.teams) + "\n"
-        my_str += "Slots:" + str(self.slots) + "\n"
-        my_str += "Constraints:" + "\n"
-        for constraint in self.constraints:
-            my_str += "  " + constraint[0] + ": " + str(constraint[1]) + "\n"
+        my_str += "Num teams: " + str(len(self.teams)) + "\n"
+        my_str += "Num slots: " + str(len(self.slots)) + "\n"
+        my_str += "Num constraints: " + str(len(self.constraints)) + "\n"
         return my_str
 
 def read_instance(file_name):
     # Reads an instance from the RobinX XML format
     tree = et.parse(file_name)
     root = tree.getroot()
-    prob = TwoRRProblem(root[0][0].text, root[0][1].text, root[0][2].text, root[0][3].attrib["year"])
-    prob.game_mode = root[1][0][2].text
-    prob.objective = root[2][0].text
-    for child in root[3][1]:
+    meta = root.find("MetaData")
+    prob = TwoRRProblem(meta.find("InstanceName").text, meta.find("Contributor").text, meta.find("Date").attrib["year"])
+    prob.game_mode = root.find("Structure").find("Format").find("gameMode").text
+    prob.objective = root.find("ObjectiveFunction").find("Objective").text
+    for child in root.find("Resources").find("Teams"):
         prob.teams.append(child.attrib["name"])
-    for child in root[3][2]:
+    for child in root.find("Resources").find("Slots"):
         prob.slots.append(child.attrib["name"])
-    for child in root[4]:
+    for child in root.find("Constraints"):
         for constraint in child:
             prob.constraints.append((constraint.tag, constraint.attrib))
 
